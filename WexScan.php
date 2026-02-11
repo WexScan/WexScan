@@ -95,6 +95,8 @@ class WexScan {
         $this->checkFreeFire();
         $this->checkOBB();
         $this->checkGameAssets();
+        $this->checkReplay();
+        $this->checkReplayPassado();
     }
     
     function checkVersao() {
@@ -584,7 +586,41 @@ class WexScan {
         }
         echo "\n";
     }
+    function checkReplay() {
+    $this->verificacoes++;
+    echo "[►] VERIFICANDO REPLAY\n";
+    echo "-----------------------------------\n";
     
+    $replay = shell_exec("adb shell ls -la /storage/emulated/0/Android/data/com.dts.freefireth/files/MReplays/ 2>&1");
+    
+    echo "[*] Verificando pasta MReplays...\n";
+    
+    if(strpos($replay, "No such file") !== false) {
+        echo "[ℹ] Nenhum replay encontrado\n";
+    } else {
+        $dataReplay = shell_exec("adb shell ls -ld /storage/emulated/0/Android/data/com.dts.freefireth/files/MReplays/ 2>&1 | awk '{print $6, $7, \$8}'");
+        echo "[*] Data de acesso: " . trim($dataReplay) . "\n";
+    }
+    echo "\n";
+}
+
+function checkReplayPassado() {
+    $this->verificacoes++;
+    echo "[►] DETECÇÃO DE REPLAY PASSADO\n";
+    echo "-----------------------------------\n";
+    
+    $replayFiles = shell_exec("adb shell ls -la /storage/emulated/0/Android/data/com.dts.freefireth/files/MReplays/ 2>&1 | grep '.rec'");
+    
+    if(!empty($replayFiles) && strpos($replayFiles, "No such file") === false) {
+        echo "[⚠] Arquivos de replay encontrados!\n";
+        $recentReplay = shell_exec("adb shell ls -lt /storage/emulated/0/Android/data/com.dts.freefireth/files/MReplays/ 2>&1 | head -2 | tail -1");
+        echo "[*] Último replay: " . trim($recentReplay) . "\n";
+        echo "▸ Se foi acessado DEPOIS da partida → PASSOU REPLAY!\n";
+    } else {
+        echo "[✓] Nenhum replay passado\n";
+    }
+    echo "\n";
+}
     function resumoFinal() {
         echo "══════════════════════════════════════════\n";
         echo "         RESUMO DA ANÁLISE\n";
