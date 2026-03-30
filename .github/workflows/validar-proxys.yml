@@ -1,0 +1,145 @@
+name: Validar Proxys
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      proxy_manual:
+        description: 'Proxy para testar (opcional)'
+        required: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Configurar Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    
+    - name: Criar script de validação
+      run: |
+        cat > validate.py << 'EOF'
+        import json
+        import requests
+        import sys
+        from datetime import datetime
+        
+        print("=" * 60)
+        print("🔍 VALIDADOR DE PROXYS")
+        print("=" * 60)
+        print(f"Data: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print()
+        
+        # Lista de proxies suspeitas para testar
+        proxies_para_testar = [
+            "http://proxy-suspeito.com:8080",
+            "https://vpn-teste.com:443",
+            # Adicione suas proxies aqui depois
+        ]
+        
+        # Se foi passada uma proxy manual
+        if len(sys.argv) > 1:
+            proxies_para_testar.append(sys.argv[1])
+        
+        resultados = []
+        
+        for proxy in proxies_para_testar:
+            print(f"🔄 Testando: {proxy}")
+            
+            try:
+                # Tentar conectar via proxy
+                proxies = {
+                    'http': proxy,
+                    'https': proxy
+                }
+                
+                start = datetime.now()
+                response = requests.get(
+                    'https://httpbin.org/ip',
+                    proxies=proxies,
+                    timeout=10,
+                    verify=False
+                )
+                end = datetime.now()
+                
+                tempo = (end - start).total_seconds() * 1000
+                
+                if response.status_code == 200:
+                    print(f"  ✅ ATIVA - {tempo:.0f}ms")
+                    print(f"  📍 IP retornado: {response.text}")
+                    resultados.append({
+                        'proxy': proxy,
+                        'status': 'ativa',
+                        'tempo': f"{tempo:.0f}ms",
+                        'ip': response.text
+                    })
+                else:
+                    print(f"  ⚠️ Respondeu mas com erro: {response.status_code}")
+                    resultados.append({
+                        'proxy': proxy,
+                        'status': 'erro',
+                        'codigo': response.status_code
+                    })
+                    
+            except requests.exceptions.Timeout:
+                print(f"  ❌ TIMEOUT - Não respondeu em 10 segundos")
+                resultados.append({'proxy': proxy, 'status': 'timeout'})
+            except Exception as e:
+                print(f"  ❌ ERRO: {str(e)[:100]}")
+                resultados.append({'proxy': proxy, 'status': 'erro', 'mensagem': str(e)})
+            
+            print()
+        
+        # Gerar relatório
+        print("=" * 60)
+        print("📊 RESUMO")
+        print("=" * 60)
+        
+        ativas = [r for r in resultados if r.get('status') == 'ativa']
+        print(f"✅ Proxys ativas: {len(ativas)}")
+        print(f"❌ Proxys inativas: {len(resultados) - len(ativas)}")
+        
+        # Salvar resultados
+        with open('resultado.txt', 'w') as f:
+            f.write(json.dumps(resultados, indent=2))
+        
+        with open('resultado.md', 'w') as f:
+            f.write("# Relatório de Validação de Proxys\n\n")
+            f.write(f"**Data:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+            f.write("## Resultados\n\n")
+            for r in resultados:
+                if r.get('status') == 'ativa':
+                    f.write(f"✅ **{r['proxy']}** - ATIVA ({r.get('tempo', 'N/A')})\n")
+                else:
+                    f.write(f"❌ **{r.get('proxy', 'desconhecido')}** - INATIVA\n")
+        
+        EOF
+        
+    - name: Executar validação
+      run: |
+        python validate.py "${{ github.event.inputs.proxy_manual }}"
+    
+    - name: Mostrar resultados
+      run: |
+        echo "## Resultados da Validação" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        cat resultado.txt 2>/dev/null || echo "Nenhum resultado ainda" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        
+        if [ -f resultado.md ]; then
+          cat resultado.md >> $GITHUB_STEP_SUMMARY
+        fi
+    
+    - name: Salvar artefato
+      uses: actions/upload-artifact@v3
+      with:
+        name: resultado-validacao
+        path: |
+          resultado.txt
+          resultado.md
